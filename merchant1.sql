@@ -40,6 +40,37 @@ address_value - значение адреса
 passport_value - значение паспорта
 */
 
+-- v2 -- february 2024
+with dates as (
+	select 
+		distinct client_id,
+		date_change
+	from client_address_change_log ca
+	union 
+	select 
+		distinct client_id,
+		date_change
+	from client_passport_change_log cp
+	)
+select c.client_id,
+	c.client_name,
+	d.date_change as valid_from,
+	lead(d.date_change, 1, '6000-01-01'::date) over(partition by c.client_id order by d.date_change) - 1 as valid_to,
+	case 
+		when ca.date_change is not null then ca.address_value
+		else lag(ca.address_value) over(partition by c.client_id order by d.date_change)
+	end as address_value,
+	case 
+		when cp.date_change is not null then cp.passport_value
+		else lag(cp.passport_value) over(partition by c.client_id order by d.date_change)
+	end as passport_value
+from dates d
+	left join client_address_change_log ca on ca.date_change = d.date_change and ca.client_id = d.client_id
+	left join client_passport_change_log cp on cp.date_change = d.date_change and cp.client_id = d.client_id
+	right join clients c on c.client_id = d.client_id
+where c.is_actual = 1
+
+-- v1 -- october 2023
 with t1 as (
 	select 
 		a.client_id ,
